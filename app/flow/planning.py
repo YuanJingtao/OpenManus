@@ -137,10 +137,16 @@ class PlanningFlow(BaseFlow):
         """Create an initial plan based on the request using the flow's LLM and PlanningTool."""
         logger.info(f"Creating initial plan with ID: {self.active_plan_id}")
 
+        # system_message_content = (
+        #     "You are a planning assistant. Create a concise, actionable plan with clear steps. "
+        #     "Focus on key milestones rather than detailed sub-steps. "
+        #     "Optimize for clarity and efficiency."
+        # )
         system_message_content = (
-            "You are a planning assistant. Create a concise, actionable plan with clear steps. "
-            "Focus on key milestones rather than detailed sub-steps. "
-            "Optimize for clarity and efficiency."
+            "你是一个规划助手。请制定一个简洁、可执行的计划，包含清晰的步骤。"
+            "聚焦关键里程碑，而非详细的子步骤。"
+            "以清晰和高效为优化目标。"
+            "每一步结果要保存，以供下一步读取作为输入，而且明确在工作空间中的文件路径"
         )
         agents_description = []
         for key in self.executor_keys:
@@ -153,18 +159,28 @@ class PlanningFlow(BaseFlow):
                 )
         if len(agents_description) > 1:
             # Add description of agents to select
+            # system_message_content += (
+            #     f"\nNow we have {agents_description} agents. "
+            #     f"The infomation of them are below: {json.dumps(agents_description)}\n"
+            #     "When creating steps in the planning tool, please specify the agent names using the format '[agent_name]'."
+            # )
+            # Add description of agents to select
             system_message_content += (
-                f"\nNow we have {agents_description} agents. "
-                f"The infomation of them are below: {json.dumps(agents_description)}\n"
-                "When creating steps in the planning tool, please specify the agent names using the format '[agent_name]'."
+                f"\n现在我们有 {agents_description} agents. "
+                f"它们的信息如下: {json.dumps(agents_description)}\n"
+                "在规划工具中创建步骤时，请使用格式 '[agent_name]'放在步骤名称开头，来指定该步骤使用的智能体名称。"
             )
 
         # Create a system message for plan creation
         system_message = Message.system_message(system_message_content)
 
         # Create a user message with the request
+        # user_message = Message.user_message(
+        #     f"Create a reasonable plan with clear steps to accomplish the task: {request}"
+        # )
+
         user_message = Message.user_message(
-            f"Create a reasonable plan with clear steps to accomplish the task: {request}"
+            f"创建一个合理且步骤清晰的计划，以完成以下任务: {request}"
         )
 
         # Call LLM with PlanningTool
@@ -281,14 +297,24 @@ class PlanningFlow(BaseFlow):
         step_text = step_info.get("text", f"Step {self.current_step_index}")
 
         # Create a prompt for the agent to execute the current step
+        # step_prompt = f"""
+        # CURRENT PLAN STATUS:
+        # {plan_status}
+
+        # YOUR CURRENT TASK:
+        # You are now working on step {self.current_step_index}: "{step_text}"
+
+        # Please only execute this current step using the appropriate tools. When you're done, provide a summary of what you accomplished.
+        # """
+
         step_prompt = f"""
-        CURRENT PLAN STATUS:
+        当前计划状态：
         {plan_status}
 
-        YOUR CURRENT TASK:
-        You are now working on step {self.current_step_index}: "{step_text}"
+        你的当前任务：
+        你现在正在执行第 {self.current_step_index}: "{step_text}"
 
-        Please only execute this current step using the appropriate tools. When you're done, provide a summary of what you accomplished.
+        请仅使用合适的工具执行当前这一步。完成后，简要总结你完成的内容。
         """
 
         # Use agent.run() to execute the step

@@ -15,7 +15,6 @@ from app.llm import LLM
 from app.tool.base import BaseTool, ToolResult
 from app.tool.web_search import WebSearch
 
-
 _BROWSER_DESCRIPTION = """\
 A powerful browser automation tool that allows interaction with web pages through various actions.
 * This tool provides commands for controlling a browser session, navigating web pages, and extracting information
@@ -383,14 +382,37 @@ class BrowserUseTool(BaseTool, Generic[Context]):
 
                     content = markdownify.markdownify(await page.content())
 
-                    prompt = f"""\
-Your task is to extract the content of the page. You will be given a page and a goal, and you should extract all relevant information around this goal from the page. If the goal is vague, summarize the page. Respond in json format.
-Extraction goal: {goal}
+                    #                     prompt = f"""\
+                    # Your task is to extract the content of the page. You will be given a page and a goal, and you should extract all relevant information around this goal from the page. If the goal is vague, summarize the page. Respond in valid json format.
+                    # """
+                    #                     messages = [
+                    #                         {"role": "system", "content": prompt},
+                    #                         {
+                    #                             "role": "user",
+                    #                             "content": f"""\
+                    # Extraction goal: {goal}
 
-Page content:
-{content[:max_content_length]}
+                    # Page content:
+                    # {content[:max_content_length]}
+                    # """,
+                    #                         },
+                    #                     ]
+
+                    prompt = f"""\
+你的任务是提取页面内容。你将收到一个页面内容和一个提取目标，请从页面中提取与该目标相关的所有信息。如果目标不明确，请对页面内容进行总结。请以合法的 JSON 格式返回结果。
 """
-                    messages = [{"role": "system", "content": prompt}]
+                    messages = [
+                        {"role": "system", "content": prompt},
+                        {
+                            "role": "user",
+                            "content": f"""\
+提取目标: {goal}
+
+页面内容:
+{content[:max_content_length]}
+""",
+                        },
+                    ]
 
                     # Define extraction function schema
                     extraction_function = {

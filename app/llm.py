@@ -1,4 +1,6 @@
+import json
 import math
+import os
 from typing import Dict, List, Optional, Union
 
 import tiktoken
@@ -30,7 +32,6 @@ from app.schema import (
     ToolChoice,
 )
 
-
 REASONING_MODELS = ["o1", "o3-mini"]
 MULTIMODAL_MODELS = [
     "gpt-4-vision-preview",
@@ -40,6 +41,9 @@ MULTIMODAL_MODELS = [
     "claude-3-sonnet-20240229",
     "claude-3-haiku-20240307",
 ]
+
+file_path = "result/output/chat.txt"
+os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
 
 class TokenCounter:
@@ -416,6 +420,10 @@ class LLM:
                     temperature if temperature is not None else self.temperature
                 )
 
+            with open(file_path, "a", encoding="utf-8") as file:
+                file.write(
+                    f"ask start:\n\nprompt:{json.dumps(messages, ensure_ascii=False)}\n\n"
+                )
             if not stream:
                 # Non-streaming request
                 response = await self.client.chat.completions.create(
@@ -430,11 +438,15 @@ class LLM:
                     response.usage.prompt_tokens, response.usage.completion_tokens
                 )
 
+                with open(file_path, "a", encoding="utf-8") as file:
+                    file.write(
+                        f"ask end:\n\nreponse:{response.choices[0].message.content}\n\n\n"
+                    )
                 return response.choices[0].message.content
 
             # Streaming request, For streaming, update estimated token count before making the request
             self.update_token_count(input_tokens)
-
+            params["model"] = "qwen-plus"
             response = await self.client.chat.completions.create(**params, stream=True)
 
             collected_messages = []
@@ -456,6 +468,9 @@ class LLM:
                 f"Estimated completion tokens for streaming response: {completion_tokens}"
             )
             self.total_completion_tokens += completion_tokens
+
+            with open(file_path, "a", encoding="utf-8") as file:
+                file.write(f"ask end:\n\nreponse:{full_response}\n\n\n")
 
             return full_response
 
@@ -537,9 +552,7 @@ class LLM:
             multimodal_content = (
                 [{"type": "text", "text": content}]
                 if isinstance(content, str)
-                else content
-                if isinstance(content, list)
-                else []
+                else content if isinstance(content, list) else []
             )
 
             # Add images to content
@@ -588,6 +601,10 @@ class LLM:
                     temperature if temperature is not None else self.temperature
                 )
 
+            with open(file_path, "a", encoding="utf-8") as file:
+                file.write(
+                    f"ask_with_images start:\n\nprompt:{json.dumps(messages, ensure_ascii=False)}\n\n"
+                )
             # Handle non-streaming request
             if not stream:
                 response = await self.client.chat.completions.create(**params)
@@ -596,10 +613,15 @@ class LLM:
                     raise ValueError("Empty or invalid response from LLM")
 
                 self.update_token_count(response.usage.prompt_tokens)
+                with open(file_path, "a", encoding="utf-8") as file:
+                    file.write(
+                        f"ask_with_images end:\n\nreponse:{response.choices[0].message.content}\n\n\n"
+                    )
                 return response.choices[0].message.content
 
             # Handle streaming request
             self.update_token_count(input_tokens)
+            params["model"] = "qwen-plus"
             response = await self.client.chat.completions.create(**params)
 
             collected_messages = []
@@ -614,6 +636,8 @@ class LLM:
             if not full_response:
                 raise ValueError("Empty response from streaming LLM")
 
+            with open(file_path, "a", encoding="utf-8") as file:
+                file.write(f"ask_with_images end:\n\nreponse:{full_response}\n\n\n")
             return full_response
 
         except TokenLimitExceeded:
@@ -712,7 +736,8 @@ class LLM:
 
             # Set up the completion request
             params = {
-                "model": self.model,
+                # "model": self.model,
+                "model": "qwen-plus",
                 "messages": messages,
                 "tools": tools,
                 "tool_choice": tool_choice,
@@ -727,7 +752,10 @@ class LLM:
                 params["temperature"] = (
                     temperature if temperature is not None else self.temperature
                 )
-
+            with open(file_path, "a", encoding="utf-8") as file:
+                file.write(
+                    f"ask_tool start:\n\nprompt:{json.dumps(messages, ensure_ascii=False)}\n\n"
+                )
             params["stream"] = False  # Always use non-streaming for tool requests
             response: ChatCompletion = await self.client.chat.completions.create(
                 **params
@@ -744,7 +772,37 @@ class LLM:
                 response.usage.prompt_tokens, response.usage.completion_tokens
             )
 
+            with open(file_path, "a", encoding="utf-8") as file:
+                file.write(
+                    f"ask_tool end:\n\nreponse:{response.choices[0].message}\n\n\n"
+                )
             return response.choices[0].message
+
+            # 这里调用的idea思考模型
+            # response = await self.client.chat.completions.create(
+            #     model=self.model,
+            #     messages=messages,
+            #     temperature=temperature or self.temperature,
+            #     max_tokens=self.max_tokens,
+            #     tools=tools,
+            #     tool_choice=tool_choice,
+            #     stream = True,
+            #     timeout=timeout,
+            #     **kwargs,
+            # )
+            # # 逐步读取响应
+            # collected_messages = []
+            # async for chunk in response:
+            #     chunk_message = chunk.choices[0].delta.content or ""
+            #     collected_messages.append(chunk_message)
+            #     print(chunk_message, end="", flush=True)
+
+            # print()  # Newline after streaming
+            # full_response = "".join(collected_messages).strip()
+            # if not full_response:
+            #     print(full_response)
+            #     raise ValueError("Invalid or empty response from LLM")
+            # return full_response
 
         except TokenLimitExceeded:
             # Re-raise token limit errors without logging
